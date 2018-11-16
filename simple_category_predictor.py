@@ -16,7 +16,7 @@ import keras
 from keras.preprocessing.text import Tokenizer
 from keras.preprocessing import sequence
 from keras.models import Sequential
-from keras.layers import Dense, Embedding, Flatten
+from keras.layers import Dense, Embedding
 from keras.layers import LSTM
 from keras.utils import to_categorical
 #pylint: enable=wrong-import-position
@@ -28,66 +28,63 @@ NUM_EPOCHS = 25
 BATCH_SIZE = 10
 
 
-def create_tokenizer(max_words, char_level=True):
-    pass
-
-
 def prepare_data(labeled_data_file, sep):
+    '''Read sep-separated data from the file, create train/test split, tokenize, categorize.'''
 
-    X = []
-    Y = []
+    x_raw = []
+    y_raw = []
 
     for line in open(labeled_data_file, encoding='utf8'):
         address, country = line.strip().split(sep)[:2]
-        X.append(address)
-        Y.append(country)
+        x_raw.append(address)
+        y_raw.append(country)
 
     tokenizer_x = Tokenizer(MAXWORDS, char_level=True)
 
-    tokenizer_x.fit_on_texts(X)
+    tokenizer_x.fit_on_texts(x_raw)
     print('tokenizer_x.word_index:', tokenizer_x.word_index)
-    reverse_word_index = {v:k for k, v in tokenizer_x.word_index.items()}
+    #reverse_word_index = {v:k for k, v in tokenizer_x.word_index.items()}
 
-    X_tts_raw = [tokenizer_x.texts_to_sequences(a) for a in X]
-    X_tts = []
-    for row in X_tts_raw:
-        X_tts.append([c[0] for c in row])
+    x_tts_raw = [tokenizer_x.texts_to_sequences(a) for a in x_raw]
+    x_tts = []
+    for row in x_tts_raw:
+        x_tts.append([c[0] for c in row])
 
-    del X
+    del x_raw
 
-    print('len(X_tts):', len(X_tts))
+    print('len(x_tts):', len(x_tts))
 
     tokenizer_y = Tokenizer(MAXWORDS, char_level=False)
-    tokenizer_y.fit_on_texts(Y)
+    tokenizer_y.fit_on_texts(y_raw)
     print('tokenizer_y.word_index:', tokenizer_y.word_index)
 
     num_classes = len(tokenizer_y.word_index.values())
     print('num_classes:', num_classes)
 
-    Y_tts = [tokenizer_y.word_index[a.lower()] for a in Y]
-    print('len Y_tts:', len(Y_tts))
+    y_tts = [tokenizer_y.word_index[a.lower()] for a in y_raw]
+    print('len y_tts:', len(y_tts))
 
-    del Y
+    del y_raw
 
-    X_train, X_test, Y_train, Y_test = train_test_split(X_tts, Y_tts, test_size=0.2)
+    x_train, x_test, y_train, y_test = train_test_split(x_tts, y_tts, test_size=0.2)
 
-    Y_train_one_hot_labels = to_categorical(Y_train, num_classes=num_classes+1)
+    y_train_one_hot_labels = to_categorical(y_train, num_classes=num_classes+1)
 
-    Y_test_one_hot_labels = to_categorical(Y_test, num_classes=num_classes+1)
+    y_test_one_hot_labels = to_categorical(y_test, num_classes=num_classes+1)
 
-    x_train = sequence.pad_sequences(X_train, maxlen=MAXLEN, padding='post', truncating='post')
-    x_test = sequence.pad_sequences(X_test, maxlen=MAXLEN, padding='post', truncating='post')
-    
+    x_train = sequence.pad_sequences(x_train, maxlen=MAXLEN, padding='post', truncating='post')
+    x_test = sequence.pad_sequences(x_test, maxlen=MAXLEN, padding='post', truncating='post')
+
     return (
-        num_classes, x_train, Y_train_one_hot_labels,
-        x_test, Y_test_one_hot_labels,
+        num_classes, x_train, y_train_one_hot_labels,
+        x_test, y_test_one_hot_labels,
         tokenizer_x, tokenizer_y
     )
 
 def train(labeled_data_file, num_epochs=NUM_EPOCHS, sep='|'):
     '''Train labeled data'''
-    num_classes, x_train, Y_train_one_hot_labels, x_test, Y_test_one_hot_labels, tokenizer_x, tokenizer_y = \
-        prepare_data(labeled_data_file, sep)
+    num_classes, x_train, y_train_one_hot_labels, x_test, y_test_one_hot_labels,\
+        tokenizer_x, tokenizer_y = prepare_data(labeled_data_file, sep)
 
     print('Build model...')
     model = Sequential()
@@ -116,7 +113,7 @@ def train(labeled_data_file, num_epochs=NUM_EPOCHS, sep='|'):
     )
 
     tb_callback = keras.callbacks.TensorBoard(
-        log_dir='./logs', histogram_freq=0, batch_size=BATCH_SIZE,
+        log_dir='./logz', histogram_freq=0, batch_size=BATCH_SIZE,
         write_graph=True, write_grads=False, write_images=False,
         embeddings_freq=0, embeddings_layer_names=None,
         embeddings_metadata=None, embeddings_data=None, update_freq='batch'
@@ -124,10 +121,10 @@ def train(labeled_data_file, num_epochs=NUM_EPOCHS, sep='|'):
 
     print('Train...')
     history = model.fit(
-        x_train, Y_train_one_hot_labels,
+        x_train, y_train_one_hot_labels,
         batch_size=BATCH_SIZE,
         epochs=num_epochs,
-        validation_data=(x_test, Y_test_one_hot_labels),
+        validation_data=(x_test, y_test_one_hot_labels),
         callbacks=[tb_callback]
     )
 
@@ -136,11 +133,12 @@ def train(labeled_data_file, num_epochs=NUM_EPOCHS, sep='|'):
 
 def predict(lines_to_predict, model, tokenizer_x, tokenizer_y, num_classes=1, print_scores=False, sep='|', min_printable_score=0.001):
     '''Predict classes of the lines of text'''
-    
+
     reverse_word_index_y = {v:k for k, v in tokenizer_y.word_index.items()}
 
     for line in lines_to_predict:
         line = line.strip()
+        # TODO implement as fallback when a character is not found, e.g. convert to ASCII.
         line_sequence = [x[0] for x in tokenizer_x.texts_to_sequences(line)]
         line_sequences_padded = sequence.pad_sequences(
             [line_sequence], maxlen=MAXLEN, padding='post', truncating='post'
@@ -153,17 +151,18 @@ def predict(lines_to_predict, model, tokenizer_x, tokenizer_y, num_classes=1, pr
         prediction_indices_sorted = sorted(prediction_indices, reverse=True, key=lambda x: x[0])
 
         class_scores = []
-        for p, p_idx in prediction_indices_sorted[:num_classes]:
-            if p >= min_printable_score:
+        for pred, pred_idx in prediction_indices_sorted[:num_classes]:
+            if pred >= min_printable_score:
                 if print_scores:
-                    class_scores.append('{}={:.3f}'.format(reverse_word_index_y[p_idx], p))
+                    class_scores.append('{}={:.3f}'.format(reverse_word_index_y[pred_idx], pred))
                 else:
-                    class_scores.append(reverse_word_index_y[p_idx])
+                    class_scores.append(reverse_word_index_y[pred_idx])
 
         print('{}{}{}'.format(line, sep, ','.join(class_scores)))
 
 
 def save_model(model_file, model, tokenizer_x, tokenizer_y):
+    '''Save model file plus x and y tokenizer data in separate files'''
     root, _ = os.path.splitext(model_file)
     model.save(model_file)
     with open('{}_tokenizer_x.pickle'.format(root), 'wb') as handle:
@@ -172,6 +171,7 @@ def save_model(model_file, model, tokenizer_x, tokenizer_y):
         pickle.dump(tokenizer_y, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
 def load_model(model_file):
+    '''Load model file plus x and y tokenizer data from separate files'''
     model = keras.models.load_model(model_file)
 
     root, _ = os.path.splitext(model_file)
@@ -184,7 +184,9 @@ def load_model(model_file):
 
 
 def main():
+    '''Main function: parses argiments, calls train or predict'''
     parser = argparse.ArgumentParser(
+        description='A simple tool to train a character level classifier and predict a class based on an input string. Useful for tasks like detecting country by address line, nationality by name, etc. ',
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
 
