@@ -29,7 +29,7 @@ NUM_EPOCHS = 25
 BATCH_SIZE = 10
 
 
-def prepare_data(labeled_data_file, sep='|'):
+def prepare_data(labeled_data_file, sep='|', char_level=False):
     '''Read sep-separated data from the file, create train/test split, tokenize, categorize.'''
 
     x_raw = []
@@ -40,9 +40,9 @@ def prepare_data(labeled_data_file, sep='|'):
         x_raw.append(address)
         y_raw.append(country)
     
-    print('len(x_raw):', len(x_raw))
+    print('Number of samples:', len(x_raw))
 
-    tokenizer_x = Tokenizer(MAXWORDS, char_level=True)
+    tokenizer_x = Tokenizer(MAXWORDS, char_level=char_level)
 
     tokenizer_x.fit_on_texts(x_raw)
     print('tokenizer_x.word_index:', tokenizer_x.word_index)
@@ -61,7 +61,7 @@ def prepare_data(labeled_data_file, sep='|'):
     print('tokenizer_y.word_index:', tokenizer_y.word_index)
 
     num_classes = len(tokenizer_y.word_index.values())
-    print('num_classes:', num_classes)
+    print('Number of classes:', num_classes)
 
     y_tts = [tokenizer_y.word_index[a.lower()] for a in y_raw]
 
@@ -81,10 +81,10 @@ def prepare_data(labeled_data_file, sep='|'):
         tokenizer_x, tokenizer_y
     )
 
-def train(labeled_data_file, weights_file=None, num_epochs=NUM_EPOCHS, sep='|', extra_lstm_layer=False, save_logs_dir=None, checkpoints=0):
+def train(labeled_data_file, weights_file=None, num_epochs=NUM_EPOCHS, sep='|', extra_lstm_layer=False, save_logs_dir=None, checkpoints=0, char_level=True):
     '''Train labeled data. If checkpoints > 0, save every n epochs.'''
     num_classes, x_train, y_train_one_hot_labels, x_test, y_test_one_hot_labels,\
-        tokenizer_x, tokenizer_y = prepare_data(labeled_data_file, sep)
+        tokenizer_x, tokenizer_y = prepare_data(labeled_data_file, sep, char_level)
     
     input_max_words = len(tokenizer_x.word_index)+1
 
@@ -230,6 +230,11 @@ def main():
         required=True
     )
     optional_group.add_argument(
+        '--extra-lstm-layer',
+        help='Add a second LSTM layer for finding extra structure in some cases',
+        action='store_true'
+    )
+    optional_group.add_argument(
         '--min-printable-score',
         help='''Don't print the class and its score if the probability is lower than this limit''',
         type=float,
@@ -263,6 +268,11 @@ def main():
         type=str,
         default=None
     )
+    optional_group.add_argument(
+        '--word-level',
+        help='Replace char-level tokenizer for input string with word-level one',
+        action='store_true'
+    )
     
     if len(sys.argv) == 1:
         parser.print_help()
@@ -275,7 +285,9 @@ def main():
             args.input_file,
             args.weights_file,
             args.num_epochs,
-            args.separator
+            args.separator,
+            extra_lstm_layer = args.extra_lstm_layer,
+            char_level = not args.word_level
         )
         save_model(args.model_file, model, tokenizer_x, tokenizer_y)
     else:
