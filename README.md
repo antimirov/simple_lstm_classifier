@@ -8,7 +8,7 @@ A simple tool to train a character- or word-level classifier and predict a class
 
 ```
 $ python simple_lstm_classifier.py train \
-  -f data/male_female_names_corpus/male_female.txt -m male_female.h5 --num-epochs=1
+  -f data/male_female_names_corpus/male_female.txt -m male_female.h5 --num-epochs=50
 Number of samples: 7943
 Train...
 Train on 6354 samples, validate on 1589 samples
@@ -21,7 +21,8 @@ Epoch 50/50
 ### Prediction:
 
 ```
-$ echo -e "Anna Karenina" | python simple_lstm_classifier.py predict -f - -m male_female.h5 
+$ echo -e "Anna Karenina" | python simple_lstm_classifier.py predict \
+  -f - -m male_female.h5 
 Using TensorFlow backend.
 Anna Karenina|female
 ```
