@@ -20,6 +20,8 @@ Epoch 50/50
 
 ## Prediction:
 
+```
 $ echo -e "Anna Karenina" | python simple_lstm_classifier.py predict -f - -m male_female.h5 
 Using TensorFlow backend.
 Anna Karenina|female
+```
