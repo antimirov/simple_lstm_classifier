@@ -23,6 +23,7 @@ from keras.utils import to_categorical
 MAXWORDS = 10000
 MAXLEN = 60
 DROPOUT = 0.2
+TEST_SPLIT = 0.2
 LAYER_SIZE = 128
 NUM_EPOCHS = 25
 BATCH_SIZE = 10
@@ -66,9 +67,7 @@ def prepare_data(labeled_data_file, sep='|'):
 
     del y_raw
 
-    x_train, x_test, y_train, y_test = train_test_split(x_tts, y_tts, test_size=0.05)
-    
-    #print('Sample of train set:', x_train[:100], y_train[:100])
+    x_train, x_test, y_train, y_test = train_test_split(x_tts, y_tts, test_size=TEST_SPLIT)
 
     y_train_one_hot_labels = to_categorical(y_train, num_classes=num_classes+1)
     y_test_one_hot_labels = to_categorical(y_test, num_classes=num_classes+1)
