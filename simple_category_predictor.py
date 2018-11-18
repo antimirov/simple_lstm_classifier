@@ -16,28 +16,30 @@ import keras
 from keras.preprocessing.text import Tokenizer
 from keras.preprocessing import sequence
 from keras.models import Sequential
-from keras.layers import Dense, Embedding
-from keras.layers import LSTM
+from keras.layers import Dense, Embedding, Dropout, LSTM, LeakyReLU
 from keras.utils import to_categorical
 #pylint: enable=wrong-import-position
 
 MAXWORDS = 10000
 MAXLEN = 60
-
+DROPOUT = 0.2
+LAYER_SIZE = 128
 NUM_EPOCHS = 25
 BATCH_SIZE = 10
 
 
-def prepare_data(labeled_data_file, sep):
+def prepare_data(labeled_data_file, sep='|'):
     '''Read sep-separated data from the file, create train/test split, tokenize, categorize.'''
 
     x_raw = []
     y_raw = []
 
     for line in open(labeled_data_file, encoding='utf8'):
-        address, country = line.strip().split(sep)[:2]
+        address, country = line.strip().split(sep)
         x_raw.append(address)
         y_raw.append(country)
+    
+    print('len(x_raw):', len(x_raw))
 
     tokenizer_x = Tokenizer(MAXWORDS, char_level=True)
 
@@ -51,8 +53,7 @@ def prepare_data(labeled_data_file, sep):
         x_tts.append([c[0] for c in row])
 
     del x_raw
-
-    print('len(x_tts):', len(x_tts))
+    del x_tts_raw
 
     tokenizer_y = Tokenizer(MAXWORDS, char_level=False)
     tokenizer_y.fit_on_texts(y_raw)
@@ -62,48 +63,56 @@ def prepare_data(labeled_data_file, sep):
     print('num_classes:', num_classes)
 
     y_tts = [tokenizer_y.word_index[a.lower()] for a in y_raw]
-    print('len y_tts:', len(y_tts))
 
     del y_raw
 
-    x_train, x_test, y_train, y_test = train_test_split(x_tts, y_tts, test_size=0.2)
+    x_train, x_test, y_train, y_test = train_test_split(x_tts, y_tts, test_size=0.05)
+    
+    #print('Sample of train set:', x_train[:100], y_train[:100])
 
     y_train_one_hot_labels = to_categorical(y_train, num_classes=num_classes+1)
-
     y_test_one_hot_labels = to_categorical(y_test, num_classes=num_classes+1)
 
-    x_train = sequence.pad_sequences(x_train, maxlen=MAXLEN, padding='post', truncating='post')
-    x_test = sequence.pad_sequences(x_test, maxlen=MAXLEN, padding='post', truncating='post')
+    x_train_pad = sequence.pad_sequences(x_train, maxlen=MAXLEN, padding='post', truncating='post')
+    x_test_pad = sequence.pad_sequences(x_test, maxlen=MAXLEN, padding='post', truncating='post')
 
     return (
-        num_classes, x_train, y_train_one_hot_labels,
-        x_test, y_test_one_hot_labels,
+        num_classes, x_train_pad, y_train_one_hot_labels,
+        x_test_pad, y_test_one_hot_labels,
         tokenizer_x, tokenizer_y
     )
 
-def train(labeled_data_file, num_epochs=NUM_EPOCHS, sep='|'):
-    '''Train labeled data'''
+def train(labeled_data_file, weights_file=None, num_epochs=NUM_EPOCHS, sep='|', extra_lstm_layer=False, save_logs_dir=None, checkpoints=0):
+    '''Train labeled data. If checkpoints > 0, save every n epochs.'''
     num_classes, x_train, y_train_one_hot_labels, x_test, y_test_one_hot_labels,\
         tokenizer_x, tokenizer_y = prepare_data(labeled_data_file, sep)
+    
+    input_max_words = len(tokenizer_x.word_index)+1
 
     print('Build model...')
     model = Sequential()
-    model.add(Embedding(MAXWORDS, 128, mask_zero=False))
+    model.add(Embedding(input_max_words, LAYER_SIZE, mask_zero=False))
+    if extra_lstm_layer:
+        model.add(
+            LSTM(
+                LAYER_SIZE, input_shape=(input_max_words, MAXLEN), dropout=DROPOUT,
+                recurrent_dropout=DROPOUT, return_sequences=True
+            )
+        )
+
     model.add(
         LSTM(
-            128, input_shape=(MAXWORDS, MAXLEN), dropout=0.2,
-            recurrent_dropout=0.2, return_sequences=True
+            LAYER_SIZE, input_shape=(input_max_words, MAXLEN),
+            dropout=DROPOUT, recurrent_dropout=DROPOUT
         )
     )
-    model.add(
-        LSTM(
-            128, input_shape=(MAXWORDS, MAXLEN), dropout=0.2,
-            recurrent_dropout=0.2
-        )
-    )
-    model.add(Dense(128, activation='relu'))
-    model.add(Dense(128, activation='relu'))
-    model.add(Dense(128, activation='relu'))
+    
+    model.add(Dense(LAYER_SIZE))
+    model.add(LeakyReLU(alpha=0.1))
+    model.add(Dropout(DROPOUT))
+    model.add(Dense(LAYER_SIZE))
+    model.add(LeakyReLU(alpha=0.1))
+    model.add(Dropout(DROPOUT))
     model.add(Dense(num_classes+1, activation='softmax'))
 
     model.compile(
@@ -111,13 +120,27 @@ def train(labeled_data_file, num_epochs=NUM_EPOCHS, sep='|'):
         optimizer='adam',
         metrics=['accuracy']
     )
-
-    tb_callback = keras.callbacks.TensorBoard(
-        log_dir='./logz', histogram_freq=0, batch_size=BATCH_SIZE,
-        write_graph=True, write_grads=False, write_images=False,
-        embeddings_freq=0, embeddings_layer_names=None,
-        embeddings_metadata=None, embeddings_data=None, update_freq='batch'
-    )
+    
+    model.summary()
+    
+    if weights_file:
+        print('Load weights...')
+        model.load_weights(weights_file)
+    
+    callbacks = []
+    
+    if save_logs_dir:
+        tensorboard_cb = keras.callbacks.TensorBoard(
+            log_dir=save_logs_dir, histogram_freq=0, batch_size=BATCH_SIZE,
+            write_graph=True, write_grads=False, write_images=False,
+            embeddings_freq=0, embeddings_layer_names=None,
+            embeddings_metadata=None, embeddings_data=None, update_freq='batch'
+        )
+        callbacks.append(tensorboard_cb)
+    
+    if checkpoints:
+        checkpoint_cb = keras.callbacks.ModelCheckpoint('./model_weights.e{epoch:02d}-val_acc_{val_acc:.2f}.hdf5', monitor='val_loss', verbose=0, save_best_only=False, save_weights_only=False, mode='auto', period=1)
+        callbacks.append(checkpoint_cb)
 
     print('Train...')
     history = model.fit(
@@ -125,7 +148,7 @@ def train(labeled_data_file, num_epochs=NUM_EPOCHS, sep='|'):
         batch_size=BATCH_SIZE,
         epochs=num_epochs,
         validation_data=(x_test, y_test_one_hot_labels),
-        callbacks=[tb_callback]
+        callbacks=callbacks,
     )
 
     return model, history, tokenizer_x, tokenizer_y
@@ -186,12 +209,12 @@ def load_model(model_file):
 def main():
     '''Main function: parses argiments, calls train or predict'''
     parser = argparse.ArgumentParser(
-        description='A simple tool to train a character level classifier and predict a class based on an input string. Useful for tasks like detecting country by address line, nationality by name, etc. ',
+        description='A simple tool to train a character level classifier and predict a class based on an input string. Useful for tasks like detecting country by address line, nationality by name, etc. Prediction is printed into stdout.',
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
 
     required_group = parser.add_argument_group('Required')
-    optonal_group = parser.add_argument_group('Optional')
+    optional_group = parser.add_argument_group('Optional')
 
     required_group.add_argument(
         'action', help='Action: train or predict?',
@@ -204,46 +227,60 @@ def main():
     )
     required_group.add_argument(
         '-m', '--model-file',
-        help='Model file. Overwriten after training or loaded for prediction. Class file will be stored along as modelname.cls',
+        help='Model file. Overwriten after training or loaded for prediction. Tokenizer data will be stored along as 2 <modelname>_tokenizer_x/y.pickle files',
         required=True
     )
-    optonal_group.add_argument(
-        '--num-epochs',
-        help='Number of training epochs',
-        type=int,
-        default=NUM_EPOCHS
-    )
-    optonal_group.add_argument(
-        '--num-classes',
-        help='Print number of classes for each input line',
-        type=int,
-        default=1
-    )
-    optonal_group.add_argument(
-        '--print-scores',
-        help=r'Print scores for each class in such form: CLASS1=95.3%%,CLASS2=3.2%%,etc...',
-        action='store_true'
-    )
-    parser.add_argument(
-        '--separator',
-        help='Output separator symbol: orig_lin<SEP><class1=0.98><class2=0.01>...',
-        default='|'
-    )
-    optonal_group.add_argument(
+    optional_group.add_argument(
         '--min-printable-score',
         help='''Don't print the class and its score if the probability is lower than this limit''',
         type=float,
         default=0.001
     )
+    optional_group.add_argument(
+        '--num-classes',
+        help='Print number of classes for each input line',
+        type=int,
+        default=1
+    )
+    optional_group.add_argument(
+        '--num-epochs',
+        help='Number of training epochs',
+        type=int,
+        default=NUM_EPOCHS
+    )
+    optional_group.add_argument(
+        '--print-scores',
+        help=r'Print scores for each class in such form: CLASS1=95.3%%,CLASS2=3.2%%,etc...',
+        action='store_true'
+    )
+    optional_group.add_argument(
+        '--separator',
+        help='Output separator symbol: orig_lin<SEP><class1=0.98>,<class2=0.01>,...',
+        default='|'
+    )
+    optional_group.add_argument(
+        '--weights-file',
+        help='Weight from previous run if you want to continue training',
+        type=str,
+        default=None
+    )
+    
+    if len(sys.argv) == 1:
+        parser.print_help()
+        sys.exit(1)
 
     args = parser.parse_args()
 
     if args.action == 'train':
         model, history, tokenizer_x, tokenizer_y = train(
-            args.input_file, args.num_epochs, args.separator
+            args.input_file,
+            args.weights_file,
+            args.num_epochs,
+            args.separator
         )
         save_model(args.model_file, model, tokenizer_x, tokenizer_y)
-    elif args.action == 'predict':
+    else:
+        # args.action == 'predict':
         model, tokenizer_x, tokenizer_y = load_model(args.model_file)
         in_file = sys.stdin if args.input_file == '-' else open(args.input_file)
         predict(
@@ -256,8 +293,6 @@ def main():
             args.separator,
             args.min_printable_score
         )
-    else:
-        pass
 
 if __name__ == '__main__':
     main()
