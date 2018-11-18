@@ -7,13 +7,15 @@ A simple tool to train a character or word level classifier and predict a class 
 ### Training
 
 ```bash
-$ python simple_lstm_classifier.py train -f data/male_female_names_corpus/male_female.txt -m male_female.h5 --num-epochs=1
+$ python simple_lstm_classifier.py train \
+  -f data/male_female_names_corpus/male_female.txt -m male_female.h5 --num-epochs=1
 Number of samples: 7943
 Train...
 Train on 6354 samples, validate on 1589 samples
 ... some time later...
 Epoch 50/50
-6354/6354 [==============================] - 31s 5ms/step - loss: 0.0356 - acc: 0.9104 - val_loss: 0.0788 - val_acc: 0.8991
+6354/6354 [==============================] - 31s 5ms/step - loss: 0.0356 - acc: 0.9104
+                                                  - val_loss: 0.0788 - val_acc: 0.8991
 ```
 
 ## Prediction:
