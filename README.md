@@ -6,7 +6,7 @@ A simple tool to train a character or word level classifier and predict a class 
 
 ### Training
 
-```bash
+```
 $ python simple_lstm_classifier.py train \
   -f data/male_female_names_corpus/male_female.txt -m male_female.h5 --num-epochs=1
 Number of samples: 7943
