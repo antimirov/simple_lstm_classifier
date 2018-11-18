@@ -39,7 +39,7 @@ def prepare_data(labeled_data_file, sep='|', char_level=False):
         address, country = line.strip().split(sep)
         x_raw.append(address)
         y_raw.append(country)
-    
+
     print('Number of samples:', len(x_raw))
 
     tokenizer_x = Tokenizer(MAXWORDS, char_level=char_level)
@@ -85,7 +85,7 @@ def train(labeled_data_file, weights_file=None, num_epochs=NUM_EPOCHS, sep='|', 
     '''Train labeled data. If checkpoints > 0, save every n epochs.'''
     num_classes, x_train, y_train_one_hot_labels, x_test, y_test_one_hot_labels,\
         tokenizer_x, tokenizer_y = prepare_data(labeled_data_file, sep, char_level)
-    
+
     input_max_words = len(tokenizer_x.word_index)+1
 
     print('Build model...')
@@ -105,7 +105,7 @@ def train(labeled_data_file, weights_file=None, num_epochs=NUM_EPOCHS, sep='|', 
             dropout=DROPOUT, recurrent_dropout=DROPOUT
         )
     )
-    
+
     model.add(Dense(LAYER_SIZE))
     model.add(LeakyReLU(alpha=0.1))
     model.add(Dropout(DROPOUT))
@@ -119,15 +119,15 @@ def train(labeled_data_file, weights_file=None, num_epochs=NUM_EPOCHS, sep='|', 
         optimizer='adam',
         metrics=['accuracy']
     )
-    
+
     model.summary()
-    
+
     if weights_file:
         print('Load weights...')
         model.load_weights(weights_file)
-    
+
     callbacks = []
-    
+
     if save_logs_dir:
         tensorboard_cb = keras.callbacks.TensorBoard(
             log_dir=save_logs_dir, histogram_freq=0, batch_size=BATCH_SIZE,
@@ -136,7 +136,7 @@ def train(labeled_data_file, weights_file=None, num_epochs=NUM_EPOCHS, sep='|', 
             embeddings_metadata=None, embeddings_data=None, update_freq='batch'
         )
         callbacks.append(tensorboard_cb)
-    
+
     if checkpoints:
         checkpoint_cb = keras.callbacks.ModelCheckpoint('./model_weights.e{epoch:02d}-val_acc_{val_acc:.2f}.hdf5', monitor='val_loss', verbose=0, save_best_only=False, save_weights_only=False, mode='auto', period=1)
         callbacks.append(checkpoint_cb)
@@ -204,9 +204,8 @@ def load_model(model_file):
 
     return model, tokenizer_x, tokenizer_y
 
-
-def main():
-    '''Main function: parses argiments, calls train or predict'''
+def parse_args():
+    '''Parses argiments and returns them'''
     parser = argparse.ArgumentParser(
         description='A simple tool to train a character level classifier and predict a class based on an input string. Useful for tasks like detecting country by address line, nationality by name, etc. Prediction is printed into stdout.',
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
@@ -273,12 +272,18 @@ def main():
         help='Replace char-level tokenizer for input string with word-level one',
         action='store_true'
     )
-    
+
     if len(sys.argv) == 1:
         parser.print_help()
         sys.exit(1)
+    
+    return parser.parse_args()
 
-    args = parser.parse_args()
+
+def main():
+    '''Main function: calls train or predict'''
+
+    args = parse_args()
 
     if args.action == 'train':
         model, history, tokenizer_x, tokenizer_y = train(
@@ -286,8 +291,8 @@ def main():
             args.weights_file,
             args.num_epochs,
             args.separator,
-            extra_lstm_layer = args.extra_lstm_layer,
-            char_level = not args.word_level
+            extra_lstm_layer=args.extra_lstm_layer,
+            char_level=not args.word_level
         )
         save_model(args.model_file, model, tokenizer_x, tokenizer_y)
     else:
