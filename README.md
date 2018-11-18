@@ -18,7 +18,7 @@ Epoch 50/50
                                                   - val_loss: 0.0788 - val_acc: 0.8991
 ```
 
-## Prediction:
+### Prediction:
 
 ```
 $ echo -e "Anna Karenina" | python simple_lstm_classifier.py predict -f - -m male_female.h5 
